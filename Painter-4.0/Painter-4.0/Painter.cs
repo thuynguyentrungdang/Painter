@@ -22,7 +22,10 @@ public record ModMetadata : AbstractModMetadata
     public override SemanticVersioning.Version Version { get; init; } = new("2.0.0");
     public override SemanticVersioning.Range SptVersion { get; init; } = new("~4.0.0");
     public override List<string>? Incompatibilities { get; init; }
-    public override Dictionary<string, SemanticVersioning.Range>? ModDependencies { get; init; }
+    public override Dictionary<string, SemanticVersioning.Range>? ModDependencies { get; init; } = new()
+    {
+        {"com.wtt.commonlib", new SemanticVersioning.Range("~2.0.0")}
+    };
     public override string? Url { get; init; } = "";
     public override bool? IsBundleMod { get; init; } = false;
     public override string? License { get; init; } = "MIT";
@@ -35,13 +38,16 @@ public class Painter(
     ImageRouter imageRouter,
     ConfigServer configServer,
     TimeUtil timeUtil,
-    EpicTraderHelper traderHelper) : IOnLoad
+    EpicTraderHelper traderHelper,
+    WTTServerCommonLib.WTTServerCommonLib wttCommon) : IOnLoad
 {
     private readonly TraderConfig _traderConfig = configServer.GetConfig<TraderConfig>();
     private readonly RagfairConfig _ragfairConfig = configServer.GetConfig<RagfairConfig>();
     
-    public Task OnLoad()
+    public async Task OnLoad()
     {
+        Assembly assembly = Assembly.GetExecutingAssembly();
+        
         // A path to the mods files we use below
         var pathToMod = modHelper.GetAbsolutePathToModFolder(Assembly.GetExecutingAssembly());
 
@@ -74,7 +80,9 @@ public class Painter(
         // Save the data we loaded above into the trader we've made
         traderHelper.OverwriteTraderAssort(traderBase.Id, assort);
         
+        await wttCommon.CustomQuestService.CreateCustomQuests(assembly);
+        
         logger.Success("[Painter] Mod loaded successfully.");
-        return Task.CompletedTask;
+        await Task.CompletedTask;
     }
 }
