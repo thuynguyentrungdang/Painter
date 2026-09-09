@@ -1,50 +1,48 @@
 ﻿using System.Reflection;
+using SPTarkov.Common.Models.Logging;
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.DI;
-using SPTarkov.Server.Core.Helpers;
+using SPTarkov.Server.Core.Helpers.Server;
 using SPTarkov.Server.Core.Models.Eft.Common.Tables;
 using SPTarkov.Server.Core.Models.Spt.Config;
 using SPTarkov.Server.Core.Models.Spt.Mod;
-using SPTarkov.Server.Core.Models.Utils;
 using SPTarkov.Server.Core.Routers;
-using SPTarkov.Server.Core.Servers;
 using SPTarkov.Server.Core.Utils;
 using Path = System.IO.Path;
 
 namespace Painter;
 
-public record ModMetadata : AbstractModMetadata
+public record ModMetadata : IModMetadata
 {
-    public override string ModGuid { get; init; } = "com.emilanderss0n.painter";
-    public override string Name { get; init; } = "Painter";
-    public override string Author { get; init; } = "MoxoPixel";
-    public override List<string>? Contributors { get; init; }
-    public override SemanticVersioning.Version Version { get; init; } = new("2.0.0");
-    public override SemanticVersioning.Range SptVersion { get; init; } = new("~4.0.0");
-    public override List<string>? Incompatibilities { get; init; }
-    public override Dictionary<string, SemanticVersioning.Range>? ModDependencies { get; init; } = new()
+    public string ModGuid { get; init; } = "com.emilanderss0n.painter";
+    public string Name { get; init; } = "Painter";
+    public string Author { get; init; } = "MoxoPixel";
+    public List<string>? Contributors { get; init; }
+    public SemanticVersioning.Version Version { get; init; } = new("2.0.0");
+    public SemanticVersioning.Range SptVersion { get; init; } = new("~4.1.0");
+    public bool HasPrepatcher { get; init; }
+    public List<string>? Incompatibilities { get; init; }
+    public Dictionary<string, SemanticVersioning.Range>? ModDependencies { get; init; } = new()
     {
-        {"com.wtt.commonlib", new SemanticVersioning.Range("~2.0.0")}
+        {"com.wtt.commonlib", new SemanticVersioning.Range("~3.0.0")}
     };
-    public override string? Url { get; init; } = "";
-    public override bool? IsBundleMod { get; init; } = false;
-    public override string? License { get; init; } = "MIT";
+    public string? Url { get; init; } = "";
+    public string? License { get; init; } = "MIT";
 }
 
-[Injectable(TypePriority = OnLoadOrder.PostDBModLoader + 1)]
+[Injectable(TypePriority = OnLoadOrder.PostLoad + 1)]
 public class Painter(
     ISptLogger<Painter> logger,
     ModHelper modHelper,
     ImageRouter imageRouter,
-    ConfigServer configServer,
+    TraderConfig traderConfig,
+    RagfairConfig ragfairConfig,
     TimeUtil timeUtil,
     EpicTraderHelper traderHelper,
     WTTServerCommonLib.WTTServerCommonLib wttCommon) : IOnLoad
 {
-    private readonly TraderConfig _traderConfig = configServer.GetConfig<TraderConfig>();
-    private readonly RagfairConfig _ragfairConfig = configServer.GetConfig<RagfairConfig>();
-    
-    public async Task OnLoad()
+
+    public async Task OnLoadAsync(CancellationToken cancellationToken)
     {
         Assembly assembly = Assembly.GetExecutingAssembly();
         
@@ -59,10 +57,10 @@ public class Painter(
 
         // Create a helper class and use it to register our traders image/icon + set its stock refresh time
         imageRouter.AddRoute(traderBase.Avatar.Replace(".jpg", ""), traderImagePath);
-        traderHelper.SetTraderUpdateTime(_traderConfig, traderBase, timeUtil.GetHoursAsSeconds(1), timeUtil.GetHoursAsSeconds(2));
+        traderHelper.SetTraderUpdateTime(traderConfig, traderBase, timeUtil.GetHoursAsSeconds(1), timeUtil.GetHoursAsSeconds(2));
 
         // Add our trader to the config file, this lets it be seen by the flea market
-        _ragfairConfig.Traders.TryAdd(traderBase.Id, true);
+        ragfairConfig.Traders.TryAdd(traderBase.Id, true);
 
         // Add our trader (with no items yet) to the server database
         // An 'assort' is the term used to describe the offers a trader sells, it has 3 parts to an assort
