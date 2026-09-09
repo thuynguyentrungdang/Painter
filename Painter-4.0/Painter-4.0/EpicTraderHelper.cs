@@ -1,37 +1,24 @@
-﻿using SPTarkov.Common.Models.Logging;
+﻿using JetBrains.Annotations;
+using SPTarkov.Common.Models.Logging;
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.DI;
 using SPTarkov.Server.Core.Models.Common;
 using SPTarkov.Server.Core.Models.Eft.Common.Tables;
 using SPTarkov.Server.Core.Models.Spt.Config;
 using SPTarkov.Server.Core.Models.Spt.Tables;
-using SPTarkov.Server.Core.Services.Locales;
 using SPTarkov.Server.Core.Utils.Cloners;
 
 namespace Painter;
 
-/// <summary>
-/// We inject this class into 'AddTraderWithDynamicAssorts' to help us with adding the new trader into the server
-/// </summary>
-[Injectable(TypePriority = OnLoadOrder.PostLoad + 1)]
+[Injectable(TypePriority = OnLoadOrder.Preload + 1), UsedImplicitly]
 public class EpicTraderHelper(
     ISptLogger<EpicTraderHelper> logger,
     ICloner cloner,
-    TradersTable tradersTable,
     LocaleTable localeTable,
-    LocaleService localeService)
+    TradersTable tradersTable)
 {
-
-    /// <summary>
-    /// Add the traders update time for when their offers refresh
-    /// </summary>
-    /// <param name="traderConfig">trader config to add our trader to</param>
-    /// <param name="baseJson">json file for trader (db/base.json)</param>
-    /// <param name="refreshTimeSecondsMin">How many seconds between trader stock refresh min time</param>
-    /// <param name="refreshTimeSecondsMax">How many seconds between trader stock refresh max time</param>
-    public void SetTraderUpdateTime(TraderConfig traderConfig, TraderBase baseJson, int refreshTimeSecondsMin, int refreshTimeSecondsMax)
+    public static void SetTraderUpdateTime(TraderConfig traderConfig, TraderBase baseJson, int refreshTimeSecondsMin, int refreshTimeSecondsMax)
     {
-        // Add refresh time in seconds to config
         var traderRefreshRecord = new UpdateTime
         {
             TraderId = baseJson.Id,
@@ -41,13 +28,8 @@ public class EpicTraderHelper(
         traderConfig.UpdateTime.Add(traderRefreshRecord);
     }
 
-    /// <summary>
-    /// Add a traders base data to the server, no assort items
-    /// </summary>
-    /// <param name="traderDetailsToAdd">trader details</param>
     public void AddTraderWithEmptyAssortToDb(TraderBase traderDetailsToAdd)
     {
-        // Create an empty assort ready for our items
         var emptyTraderItemAssortObject = new TraderAssort
         {
             Items = [],
@@ -55,64 +37,65 @@ public class EpicTraderHelper(
             LoyalLevelItems = new Dictionary<MongoId, int>()
         };
 
-        // Create trader data ready to add to database
         var traderDataToAdd = new Trader
         {
             Assort = emptyTraderItemAssortObject,
-            Base = cloner.Clone(traderDetailsToAdd),
-            QuestAssort = new() // quest assort is empty as trader has no assorts unlocked by quests
+            Base = cloner.Clone(traderDetailsToAdd)!,
+            QuestAssort = new Dictionary<string, Dictionary<MongoId, MongoId>>
             {
-                // We create 3 empty arrays, one for each of the main statuses that are possible
-                { "Started", new() },
-                { "Success", new() },
-                { "Fail", new() }
+                { "Started", new Dictionary<MongoId, MongoId>() },
+                { "Success", new Dictionary<MongoId, MongoId>() },
+                { "Fail", new Dictionary<MongoId, MongoId>() }
             },
             Dialogue = []
         };
 
-        // Add the new trader id and data to the server
         if (!tradersTable.TryAdd(traderDetailsToAdd.Id, traderDataToAdd))
         {
-            //Failed to add trader!
         }
     }
 
-    /// <summary>
-    /// Add traders name/location/description to all locales (e.g. German/French/English)
-    /// </summary>
-    /// <param name="baseJson">json file for trader (db/base.json)</param>
-    /// <param name="firstName">First name of trader</param>
-    /// <param name="description">Flavor text of whom the trader is</param>
     public void AddTraderToLocales(TraderBase baseJson, string firstName, string description)
     {
-        // For each language, add locale for the new trader
         var locales = localeTable.Global;
         var newTraderId = baseJson.Id;
         var fullName = baseJson.Name;
         var nickName = baseJson.Nickname;
         var location = baseJson.Location;
 
-        foreach (var (localeKey, localeKvP) in locales)
+        foreach (var (_, localeKvP) in locales)
         {
-            // We have to add a transformer here, because locales are lazy loaded due to them taking up huge space in memory
-            // The transformer will make sure that each time the locales are requested, the ones added below are included
             localeKvP.AddTransformer(lazyloadedLocaleData =>
             {
-                lazyloadedLocaleData.Add($"{newTraderId} FullName", fullName);
-                lazyloadedLocaleData.Add($"{newTraderId} FirstName", firstName);
-                lazyloadedLocaleData.Add($"{newTraderId} Nickname", nickName);
-                lazyloadedLocaleData.Add($"{newTraderId} Location", location);
-                lazyloadedLocaleData.Add($"{newTraderId} Description", description);
+                if (!lazyloadedLocaleData!.TryGetValue($"{newTraderId} FullName", out _))
+                {
+                    lazyloadedLocaleData!.Add($"{newTraderId} FullName", fullName);
+                }
+
+                if (!lazyloadedLocaleData.TryGetValue($"{newTraderId} FirstName", out _))
+                {
+                    lazyloadedLocaleData.Add($"{newTraderId} FirstName", firstName);
+                }
+
+                if (!lazyloadedLocaleData.TryGetValue($"{newTraderId} NickName", out _))
+                {
+                    lazyloadedLocaleData.Add($"{newTraderId} NickName", nickName!);
+                }
+
+                if (!lazyloadedLocaleData.TryGetValue($"{newTraderId} Location", out _))
+                {
+                    lazyloadedLocaleData.Add($"{newTraderId} Location", location!);
+                }
+
+                if (!lazyloadedLocaleData.TryGetValue($"{newTraderId} Description", out _))
+                {
+                    lazyloadedLocaleData.Add($"{newTraderId} Description", description);
+                }
                 return lazyloadedLocaleData;
             });
         }
     }
 
-    /// <summary>
-    /// Overwrite the desired traders assorts with the ones provided
-    /// </summary>
-    /// <param name="traderId">Trader to override assorts of</param>
-    /// <param name="newAssorts">new assorts we want to add</param>
     public void OverwriteTraderAssort(string traderId, TraderAssort newAssorts)
     {
         if (!tradersTable.TryGetValue(traderId, out var traderToEdit))
@@ -122,7 +105,6 @@ public class EpicTraderHelper(
             return;
         }
 
-        // Override the traders assorts with the ones we passed in
         traderToEdit.Assort = newAssorts;
     }
 }

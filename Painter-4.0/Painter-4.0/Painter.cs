@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using JetBrains.Annotations;
 using SPTarkov.Common.Models.Logging;
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.DI;
@@ -30,7 +31,7 @@ public record ModMetadata : IModMetadata
     public string? License { get; init; } = "MIT";
 }
 
-[Injectable(TypePriority = OnLoadOrder.PostLoad + 1)]
+[Injectable(TypePriority = OnLoadOrder.TraderRegistration + 2), UsedImplicitly]
 public class Painter(
     ISptLogger<Painter> logger,
     ModHelper modHelper,
@@ -38,11 +39,10 @@ public class Painter(
     TraderConfig traderConfig,
     RagfairConfig ragfairConfig,
     TimeUtil timeUtil,
-    EpicTraderHelper traderHelper,
-    WTTServerCommonLib.WTTServerCommonLib wttCommon) : IOnLoad
+    EpicTraderHelper traderHelper) : IOnLoad
 {
 
-    public async Task OnLoadAsync(CancellationToken cancellationToken)
+    public Task OnLoadAsync(CancellationToken cancellationToken)
     {
         Assembly assembly = Assembly.GetExecutingAssembly();
         
@@ -57,7 +57,7 @@ public class Painter(
 
         // Create a helper class and use it to register our traders image/icon + set its stock refresh time
         imageRouter.AddRoute(traderBase.Avatar.Replace(".jpg", ""), traderImagePath);
-        traderHelper.SetTraderUpdateTime(traderConfig, traderBase, timeUtil.GetHoursAsSeconds(1), timeUtil.GetHoursAsSeconds(2));
+        EpicTraderHelper.SetTraderUpdateTime(traderConfig, traderBase, timeUtil.GetHoursAsSeconds(1), timeUtil.GetHoursAsSeconds(2));
 
         // Add our trader to the config file, this lets it be seen by the flea market
         ragfairConfig.Traders.TryAdd(traderBase.Id, true);
@@ -78,9 +78,19 @@ public class Painter(
         // Save the data we loaded above into the trader we've made
         traderHelper.OverwriteTraderAssort(traderBase.Id, assort);
         
-        await wttCommon.CustomQuestService.CreateCustomQuests(assembly);
-        
         logger.Success("[Painter] Mod loaded successfully.");
+        
+        return Task.CompletedTask;
+    }
+}
+
+[Injectable(TypePriority = OnLoadOrder.TraderRegistration + 3), UsedImplicitly]
+public class PainterModQuest(WTTServerCommonLib.WTTServerCommonLib wttServerCommonLib) : IOnLoad
+{
+    public async Task OnLoadAsync(CancellationToken cancellationToken)
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        await wttServerCommonLib.CustomQuestService.CreateCustomQuests(assembly); 
         await Task.CompletedTask;
     }
 }
