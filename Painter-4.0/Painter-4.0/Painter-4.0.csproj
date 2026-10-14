@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
     <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
+        <TargetFramework>net10.0</TargetFramework>
         <RootNamespace>Painter</RootNamespace>
         <ImplicitUsings>enable</ImplicitUsings>
         <OutputType>Library</OutputType>
@@ -9,20 +9,19 @@
         <OutputPath>bin\$(Configuration)\$(ProjectName)\$(AssemblyName)\</OutputPath>
         <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
         <LangVersion>latest</LangVersion>
+        <Version>2.0.1</Version>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="SPTarkov.Common" Version="4.0.5"/>
-        <PackageReference Include="SPTarkov.DI" Version="4.0.5"/>
-        <PackageReference Include="SPTarkov.Server.Core" Version="4.0.5"/>
-        <PackageReference Include="WTT-ServerCommonLib" Version="2.0.4" />
+        <PackageReference Include="SPTushonka.Common" Version="4.1.*"/>
+        <PackageReference Include="SPTushonka.DI" Version="4.1.*"/>
+        <PackageReference Include="SPTushonka.Server.Core" Version="4.1.*"/>
+        <PackageReference Include="WTT-ServerCommonLib" Version="3.0.6" />
     </ItemGroup>
 
     <PropertyGroup>
-        <SPTPath>F:\SPT_4.0\SPT</SPTPath>
+        <SPTPath>F:\SPT_4.1_Server\SPT_Runtime</SPTPath>
     </PropertyGroup>
-
-    <Target Name="ForceBuild" BeforeTargets="CoreCompile" Inputs="" Outputs=""/>
 
     <Target Name="DebugCopy" AfterTargets="Build" Condition="'$(Configuration)' == 'Debug'">
 
@@ -75,12 +74,12 @@
 
     </Target>
 
-    <!-- Copy output to staging directory -->
-    <Target Name="StagingForge" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <!-- Copy output to staging directory (local dev only, skipped on CI - no D:\ drive there) -->
+    <Target Name="StagingForge" AfterTargets="Build" Condition="'$(Configuration)' == 'Release' AND '$(CI)' != 'true'">
 
         <!-- Build the full staging path -->
         <PropertyGroup>
-            <StagingDir>D:\Staging Area\$(ProjectName)\SPT\user\mods\$(ProjectName)</StagingDir>
+            <StagingDir>D:\Staging Area\$(ProjectName)\SPT_Runtime\user\mods\$(ProjectName)</StagingDir>
         </PropertyGroup>
 
         <!-- Create directory if missing -->
@@ -129,6 +128,56 @@
                 ContinueOnError="false"/>
 
         <Message Importance="high" Text="Staging complete."/>
+
+    </Target>
+
+    <!-- Zip a release-ready package (user\mods\$(ProjectName)\...) into artifacts\ -->
+    <Target Name="Package" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+
+        <PropertyGroup>
+            <PackageRoot>$(MSBuildProjectDirectory)\artifacts\$(ProjectName)-$(Version)</PackageRoot>
+            <PackageModDir>$(PackageRoot)\user\mods\$(ProjectName)</PackageModDir>
+            <PackageZipPath>$(MSBuildProjectDirectory)\artifacts\$(ProjectName)-$(Version).zip</PackageZipPath>
+        </PropertyGroup>
+
+        <RemoveDir Directories="$(PackageRoot)" Condition="Exists('$(PackageRoot)')"/>
+        <Delete Files="$(PackageZipPath)" Condition="Exists('$(PackageZipPath)')"/>
+        <MakeDir Directories="$(PackageModDir)"/>
+
+        <ItemGroup>
+            <PackageDlls Include="$(OutputPath)*.dll"/>
+            <PackageBundles Include="$(MSBuildProjectDirectory)\bundles\**\*.*"/>
+            <PackageDb Include="$(MSBuildProjectDirectory)\db\**\*.*"/>
+            <PackageRes Include="$(MSBuildProjectDirectory)\res\**\*.*"/>
+        </ItemGroup>
+
+        <Copy
+                SourceFiles="@(PackageDlls)"
+                DestinationFolder="$(PackageModDir)"
+                SkipUnchangedFiles="false"
+                ContinueOnError="false"/>
+
+        <Copy
+                SourceFiles="@(PackageBundles)"
+                DestinationFiles="@(PackageBundles->'$(PackageModDir)\bundles\%(RecursiveDir)\%(Filename)%(Extension)')"
+                SkipUnchangedFiles="false"
+                ContinueOnError="false"/>
+
+        <Copy
+                SourceFiles="@(PackageDb)"
+                DestinationFiles="@(PackageDb->'$(PackageModDir)\db\%(RecursiveDir)\%(Filename)%(Extension)')"
+                SkipUnchangedFiles="false"
+                ContinueOnError="false"/>
+
+        <Copy
+                SourceFiles="@(PackageRes)"
+                DestinationFiles="@(PackageRes->'$(PackageModDir)\res\%(RecursiveDir)\%(Filename)%(Extension)')"
+                SkipUnchangedFiles="false"
+                ContinueOnError="false"/>
+
+        <ZipDirectory SourceDirectory="$(PackageRoot)" DestinationFile="$(PackageZipPath)" Overwrite="true"/>
+
+        <Message Importance="high" Text="Packaged release zip: $(PackageZipPath)"/>
 
     </Target>
 
